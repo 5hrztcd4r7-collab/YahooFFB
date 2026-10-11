@@ -1,0 +1,14 @@
+{
+  "id": "yahoo-fantasy-football",
+  "name": "Yahoo Fantasy Football",
+  "version": "1.0.0",
+  "author": "ChuckBuilds Community",
+  "description": "Display Yahoo Fantasy Football league standings and scores on LED Matrix",
+  "entry_point": "manager.py",
+  "class_name": "YahooFantasyFootballPlugin",
+  "category": "sports",
+  "tags": ["fantasy","football","yahoo","nfl"],
+  "display_modes": ["yahoo-fantasy-football"],
+  "config_schema": "config_schema.json",
+  "compatible_versions": [">=2.0.0"]
+}
