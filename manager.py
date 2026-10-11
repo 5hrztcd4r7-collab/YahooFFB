@@ -36,7 +36,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.update_interval = config.get('update_interval', 300)
         self.display_duration = config.get('display_duration', 30)
         self.color = tuple(config.get('color', [255, 255, 255]))
-        self.layout = config.get('layout', 'auto')
+        self.layout_mode = config.get('layout', 'auto')
         self.enable_scroll = config.get('enable_scroll', False)
         self.scroll_speed = config.get('scroll_speed', 2)
         self.max_lines = config.get('max_lines', 0)
@@ -227,7 +227,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
 
         lines = self.last_data.get('lines', [])
         # Determine layout and max lines
-        if self.layout == 'auto':
+        if self.layout_mode == 'auto':
             if width >= 128 and height >= 64:
                 layout_key = 'large'
             elif width >= 64:
@@ -235,7 +235,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
             else:
                 layout_key = 'compact'
         else:
-            layout_key = self.layout
+            layout_key = self.layout_mode
 
         if self.max_lines > 0:
             max_visible = self.max_lines
