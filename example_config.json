@@ -1,0 +1,20 @@
+{
+  "yahoo-fantasy-football": {
+    "enabled": true,
+    "yahoo_client_id": "YOUR_CLIENT_ID",
+    "yahoo_client_secret": "YOUR_CLIENT_SECRET",
+    "yahoo_refresh_token": "YOUR_REFRESH_TOKEN",
+    "league_id": "12345",
+    "game_key": "nfl",
+    "team_key": "",
+    "display_mode": "standings",
+    "layout": "auto",
+    "enable_scroll": false,
+    "scroll_speed": 2,
+    "max_lines": 0,
+    "dry_run": true,
+    "display_duration": 30,
+    "update_interval": 300,
+    "color": [255, 255, 255]
+  }
+}
