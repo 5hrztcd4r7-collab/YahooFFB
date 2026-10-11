@@ -82,7 +82,7 @@
       "type": "boolean",
       "title": "Dry Run Mode",
       "description": "Use mock data instead of Yahoo API for testing layout/scrolling",
-      "default": false
+      "default": true
     },
     "display_duration": {
       "type": "integer",
@@ -103,6 +103,5 @@
       "maxItems": 3,
       "default": [255, 255, 255]
     }
-  },
-  "required": ["yahoo_client_id", "yahoo_client_secret", "yahoo_refresh_token", "league_id"]
+  }
 }
