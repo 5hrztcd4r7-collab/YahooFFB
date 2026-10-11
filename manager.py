@@ -1,4 +1,4 @@
-"""
+""" 
 Yahoo Fantasy Football Plugin for LEDMatrix
 
 Displays Yahoo Fantasy Football league standings and scores.
@@ -23,6 +23,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.last_update = 0
         self._scroll_offset = 0
         self._last_display_time = 0
+        self.bdf_font = None
         self.logger.info("Yahoo Fantasy Football plugin initialized")
 
     def _load_config(self, config):
@@ -221,7 +222,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         height = self.display_manager.height
 
         if not self.last_data:
-            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, font=self.bdf_font, centered=True)
+            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
             self.display_manager.update_display()
             return
 
@@ -265,7 +266,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
             y = y_start + i * line_height
             # Truncate line to fit width roughly
             display_line = line[:32]
-            self.display_manager.draw_text(display_line, x=width//2, y=y, color=self.color, font=self.bdf_font, centered=True)
+            self.display_manager.draw_text(display_line, x=width//2, y=y, color=self.color, centered=True)
 
         self.display_manager.update_display()
 
