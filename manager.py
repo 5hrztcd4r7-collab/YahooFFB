@@ -41,7 +41,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.enable_scroll = config.get('enable_scroll', False)
         self.scroll_speed = config.get('scroll_speed', 2)
         self.max_lines = config.get('max_lines', 0)
-        self.dry_run = config.get('dry_run', False)
+        self.dry_run = config.get('dry_run', True)
 
     def on_config_change(self, new_config):
         super().on_config_change(new_config)
@@ -82,25 +82,21 @@ class YahooFantasyFootballPlugin(BasePlugin):
         token = self._get_access_token()
         if not token:
             return None
-        url = f"https://fantasysports.yahooapis.com/fantasy/v2{path}?format=json"
+        url = f"https://fantasysports.yahooapis.com/fantasy/v2{path}"
         headers = {'Authorization': f'Bearer {token}'}
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
+            resp = requests.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            self.logger.error(f"Yahoo API error {path}: {e}")
+            self.logger.error(f"API request failed {path}: {e}")
             return None
 
     def update(self):
-        now = time.time()
-        if now - self.last_update < self.update_interval:
-            return
-        self.last_update = now
-
         if self.dry_run:
             self.logger.info("Dry run mode enabled – using mock data")
             self.last_data = self._generate_mock_data()
+            self.last_update = time.time()
             return
 
         league_key = f"{self.league_id}.{self.game_key}"
@@ -222,9 +218,13 @@ class YahooFantasyFootballPlugin(BasePlugin):
         height = self.display_manager.height
 
         if not self.last_data:
-            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
-            self.display_manager.update_display()
-            return
+            if self.dry_run:
+                # Generate mock data immediately for testing
+                self.last_data = self._generate_mock_data()
+            else:
+                self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
+                self.display_manager.update_display()
+                return
 
         lines = self.last_data.get('lines', [])
         # Determine layout and max lines
