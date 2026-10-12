@@ -1,4 +1,4 @@
-""" 
+"""
 Yahoo Fantasy Football Plugin for LEDMatrix
 
 Displays Yahoo Fantasy Football league standings and scores.
@@ -7,7 +7,7 @@ Displays Yahoo Fantasy Football league standings and scores.
 from src.plugin_system.base_plugin import BasePlugin
 import time
 import requests
-from datetime import datetime, timezone
+import xml.etree.ElementTree as ET
 
 class YahooFantasyFootballPlugin(BasePlugin):
     """Yahoo Fantasy Football plugin."""
@@ -23,7 +23,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.last_update = 0
         self._scroll_offset = 0
         self._last_display_time = 0
-        self.bdf_font = None
+        self.bdf_font = None  # avoid AttributeError
         self.logger.info("Yahoo Fantasy Football plugin initialized")
 
     def _load_config(self, config):
@@ -31,13 +31,13 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.client_secret = config.get('yahoo_client_secret', '')
         self.refresh_token = config.get('yahoo_refresh_token', '')
         self.league_id = config.get('league_id', '')
-        self.game_key = config.get('game_key', 'nfl')
+        self.game_key = config.get('game_key', '461')
         self.team_key = config.get('team_key', '')
         self.display_mode = config.get('display_mode', 'standings')
         self.update_interval = config.get('update_interval', 300)
         self.display_duration = config.get('display_duration', 30)
         self.color = tuple(config.get('color', [255, 255, 255]))
-        self.layout_mode = config.get('layout', 'auto')
+        self.layout = config.get('layout', 'auto')
         self.enable_scroll = config.get('enable_scroll', False)
         self.scroll_speed = config.get('scroll_speed', 2)
         self.max_lines = config.get('max_lines', 0)
@@ -85,156 +85,155 @@ class YahooFantasyFootballPlugin(BasePlugin):
         url = f"https://fantasysports.yahooapis.com/fantasy/v2{path}"
         headers = {'Authorization': f'Bearer {token}'}
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = requests.get(url, headers=headers, timeout=15)
             resp.raise_for_status()
-            return resp.json()
+            # Yahoo returns XML
+            content = resp.text
+            return ET.fromstring(content)
         except Exception as e:
-            self.logger.error(f"API request failed {path}: {e}")
+            self.logger.error(f"Yahoo API error {path}: {e}")
             return None
 
     def update(self):
+        now = time.time()
+        if now - self.last_update < self.update_interval:
+            return
+        self.last_update = now
+
         if self.dry_run:
             self.logger.info("Dry run mode enabled – using mock data")
             self.last_data = self._generate_mock_data()
-            self.last_update = time.time()
             return
 
         if not self.league_id:
-            self.logger.error("league_id required")
+            self.logger.warning("League ID not configured")
             return
 
-        path = f"/league/{self.game_key}.l.{self.league_id}/settings"
-        data = self._api_get(path)
-        if not data:
-            self.logger.error("Failed to fetch league data")
-            return
-
-        if self.display_mode == 'standings':
-            parsed = self._parse_standings(data)
-        elif self.display_mode == 'scoreboard':
-            parsed = self._parse_scoreboard(data)
-        elif self.display_mode == 'myteam':
-            parsed = self._parse_myteam(data)
-        else:
-            parsed = {'type': 'standings', 'lines': ['Unknown mode']}
-
-        self.last_data = parsed
-        self.last_update = time.time()
+        league_key = f"{self.game_key}.l.{self.league_id}"
+        try:
+            if self.display_mode == 'standings':
+                data = self._api_get(f'/league/{league_key}/standings')
+                if data is not None:
+                    self.last_data = self._parse_standings_xml(data)
+            elif self.display_mode == 'scoreboard':
+                data = self._api_get(f'/league/{league_key}/scoreboard')
+                if data is not None:
+                    self.last_data = self._parse_scoreboard_xml(data)
+            elif self.display_mode == 'myteam':
+                if self.team_key:
+                    data = self._api_get(f'/team/{self.team_key}')
+                    if data is not None:
+                        self.last_data = self._parse_myteam_xml(data)
+                else:
+                    self.logger.warning("team_key required for myteam mode")
+            else:
+                self.logger.warning(f"Unknown display_mode {self.display_mode}")
+        except Exception as e:
+            self.logger.error(f"Update error: {e}")
 
     def _generate_mock_data(self):
-        if self.display_mode == 'standings':
-            lines = [
-                "1. Team Alpha 8-0",
-                "2. Team Beta 7-1",
-                "3. Team Gamma 6-2",
-                "4. Team Delta 5-3",
-                "5. Team Epsilon 4-4",
-                "6. Team Zeta 3-5",
-                "7. Team Eta 2-6",
-                "8. Team Theta 1-7",
-                "9. Team Iota 0-8",
-                "10. Team Kappa 0-8"
+        mode = self.display_mode
+        if mode == 'standings':
+            teams = [
+                'Eagles', 'Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills',
+                'Chargers', 'Dolphins', 'Steelers', 'Broncos'
             ]
-        elif self.display_mode == 'scoreboard':
+            lines = []
+            for i, name in enumerate(teams, start=1):
+                wins = max(0, 10 - i)
+                losses = i - 1
+                lines.append(f"{i}. {name[:10]} {wins}-{losses}")
+            return {'type': 'standings', 'lines': lines, 'league_name': 'Mock League'}
+        elif mode == 'scoreboard':
             lines = [
-                "Alpha 120 @ Beta 98",
-                "Gamma 105 @ Delta 110",
-                "Epsilon 88 @ Zeta 92",
-                "Eta 75 @ Theta 80"
+                'Eagles 112.4 @ Patriots 98.2',
+                'Cowboys 105.1 @ Packers 110.3',
+                'Chiefs 124.0 @ 49ers 119.8',
+                'Ravens 87.5 @ Bills 92.1',
+                'Chargers 101.2 @ Dolphins 95.6',
+                'Steelers 88.9 @ Broncos 103.4'
             ]
+            return {'type': 'scoreboard', 'lines': lines, 'week': 'Mock Week 12'}
+        elif mode == 'myteam':
+            lines = ['My Team', 'Rank 3 8-4', 'PF 1150.2', 'PA 1084.7']
+            return {'type': 'myteam', 'lines': lines}
         else:
-            lines = [
-                "My Team: Alpha",
-                "Record: 8-0",
-                "Points For: 1120",
-                "Points Against: 890",
-                "Next Matchup: vs Beta"
-            ]
-        return {'type': self.display_mode, 'lines': lines, 'league_name': 'Mock League'}
+            return {'type': 'unknown', 'lines': ['Dry run mode']}
 
-    def _parse_standings(self, data):
+    def _text(self, elem):
+        return elem.text.strip() if elem is not None and elem.text else ''
+
+    def _parse_standings_xml(self, root):
         try:
-            league = data.get('fantasy_content', {}).get('league', {})
-            teams = league.get('teams', {}).get('team', [])
-            if not isinstance(teams, list):
-                teams = [teams]
-            standings = []
-            for t in teams[:8]:
-                team = t.get('team', {})
-                name = team.get('name', 'Unknown')
-                rank = team.get('team_standings', {}).get('rank', '?')
-                w = team.get('team_standings', {}).get('outcome_totals', {}).get('wins', 0)
-                l = team.get('team_standings', {}).get('outcome_totals', {}).get('losses', 0)
-                standings.append(f"{rank}. {name[:14]} {w}-{l}")
-            return {'type': 'standings', 'lines': standings, 'league_name': league.get('name', '')}
+            league = root.find('.//league')
+            league_name = self._text(league.find('name')) if league is not None else ''
+            teams_elem = root.find('.//standings/teams')
+            lines = []
+            if teams_elem is not None:
+                for team_elem in teams_elem.findall('team'):
+                    name = self._text(team_elem.find('name'))
+                    standings_elem = team_elem.find('team_standings')
+                    rank = self._text(standings_elem.find('rank')) if standings_elem is not None else '?'
+                    wins = self._text(standings_elem.find('outcome_totals/wins')) if standings_elem is not None else '0'
+                    losses = self._text(standings_elem.find('outcome_totals/losses')) if standings_elem is not None else '0'
+                    lines.append(f"{rank}. {name[:14]} {wins}-{losses}")
+            return {'type': 'standings', 'lines': lines or ['No teams'], 'league_name': league_name}
         except Exception as e:
             self.logger.error(f"Parse standings error: {e}")
             return {'type': 'standings', 'lines': ['Error parsing']}
 
-    def _parse_scoreboard(self, data):
+    def _parse_scoreboard_xml(self, root):
         try:
-            league = data.get('fantasy_content', {}).get('league', {})
-            scoreboard = league.get('scoreboard', {})
-            matchups = scoreboard.get('matchups', {}).get('matchup', [])
-            if not isinstance(matchups, list):
-                matchups = [matchups]
+            matchups_elem = root.find('.//scoreboard/matchups')
             lines = []
-            for m in matchups[:4]:
-                teams = m.get('matchup_teams', {}).get('matchup_team', [])
-                if not isinstance(teams, list):
-                    teams = [teams]
-                t1 = teams[0].get('team', {}) if len(teams) > 0 else {}
-                t2 = teams[1].get('team', {}) if len(teams) > 1 else {}
-                n1 = t1.get('name', 'T1')[:10]
-                n2 = t2.get('name', 'T2')[:10]
-                s1 = t1.get('team_points', {}).get('total', {}).get('total', '0')
-                s2 = t2.get('team_points', {}).get('total', {}).get('total', '0')
-                lines.append(f"{n1} {s1} @ {n2} {s2}")
-            return {'type': 'scoreboard', 'lines': lines, 'week': scoreboard.get('week', '')}
+            if matchups_elem is not None:
+                for matchup in matchups_elem.findall('matchup')[:4]:
+                    teams = matchup.find('matchup_teams')
+                    if teams is None:
+                        continue
+                    matchup_teams = teams.findall('matchup_team')
+                    if len(matchup_teams) < 2:
+                        continue
+                    t1 = matchup_teams[0]
+                    t2 = matchup_teams[1]
+                    n1 = self._text(t1.find('team/name'))
+                    n2 = self._text(t2.find('team/name'))
+                    s1 = self._text(t1.find('team_points/total'))
+                    s2 = self._text(t2.find('team_points/total'))
+                    lines.append(f"{n1[:10]} {s1} @ {n2[:10]} {s2}")
+            return {'type': 'scoreboard', 'lines': lines or ['No matchups'], 'week': ''}
         except Exception as e:
             self.logger.error(f"Parse scoreboard error: {e}")
             return {'type': 'scoreboard', 'lines': ['Error parsing']}
 
-    def _parse_myteam(self, data):
+    def _parse_myteam_xml(self, root):
         try:
-            league = data.get('fantasy_content', {}).get('league', {})
-            teams = league.get('teams', {}).get('team', [])
-            if not isinstance(teams, list):
-                teams = [teams]
-            lines = []
-            for t in teams:
-                team = t.get('team', {})
-                if self.team_key and team.get('team_key') != self.team_key:
-                    continue
-                name = team.get('name', 'Unknown')
-                rank = team.get('team_standings', {}).get('rank', '?')
-                w = team.get('team_standings', {}).get('outcome_totals', {}).get('wins', 0)
-                l = team.get('team_standings', {}).get('outcome_totals', {}).get('losses', 0)
-                pf = team.get('team_points', {}).get('total', {}).get('total', '0')
-                lines.append(f"{name}: {w}-{l} PF {pf}")
-                break
-            return {'type': 'myteam', 'lines': lines}
+            team = root.find('.//team')
+            name = self._text(team.find('name')) if team is not None else 'Unknown'
+            standings = team.find('team_standings') if team is not None else None
+            rank = self._text(standings.find('rank')) if standings is not None else '?'
+            wins = self._text(standings.find('outcome_totals/wins')) if standings is not None else '0'
+            losses = self._text(standings.find('outcome_totals/losses')) if standings is not None else '0'
+            return {'type': 'myteam', 'lines': [name, f"Rank {rank} {wins}-{losses}"]}
         except Exception as e:
             self.logger.error(f"Parse myteam error: {e}")
             return {'type': 'myteam', 'lines': ['Error parsing']}
 
     def display(self, force_clear=False):
-        # Always clear to avoid white fill artifacts
-        self.display_manager.clear()
         width = self.display_manager.width
         height = self.display_manager.height
 
+        # Clear each frame to avoid white fill on scroll
+        self.display_manager.clear()
+
         if not self.last_data:
-            if self.dry_run:
-                self.last_data = self._generate_mock_data()
-            else:
-                self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
-                self.display_manager.update_display()
-                return
+            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
+            self.display_manager.update_display()
+            return
 
         lines = self.last_data.get('lines', [])
-        # Determine layout and max lines
-        if self.layout_mode == 'auto':
+        # Determine layout
+        if self.layout == 'auto':
             if width >= 128 and height >= 64:
                 layout_key = 'large'
             elif width >= 64:
@@ -242,7 +241,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
             else:
                 layout_key = 'compact'
         else:
-            layout_key = self.layout_mode
+            layout_key = self.layout
 
         if self.max_lines > 0:
             max_visible = self.max_lines
@@ -262,10 +261,10 @@ class YahooFantasyFootballPlugin(BasePlugin):
             self._scroll_offset = 0
             visible_lines = lines[:max_visible]
 
-        # Better spacing
+        # Improved vertical centering to reduce top gap
         top_margin = height // 8
-        line_height = max(8, (height - 2*top_margin) // max_visible)
-        y_start = top_margin + line_height // 2
+        line_height = max(8, height // max(max_visible + 2, 2))
+        y_start = top_margin
         for i, line in enumerate(visible_lines):
             y = y_start + i * line_height
             display_line = line[:32]
@@ -301,9 +300,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         if not self.last_data:
             return "Yahoo Fantasy"
         lines = self.last_data.get('lines', [])
-        if not lines:
-            return "No data"
-        return "  •  ".join(lines)
+        return "  •  ".join(lines) if lines else "No data"
 
     def get_vegas_render_width(self):
         return 40

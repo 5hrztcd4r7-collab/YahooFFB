@@ -34,13 +34,13 @@
     "game_key": {
       "type": "string",
       "title": "Game Key",
-      "description": "Game key, typically 'nfl' for football",
-      "default": "nfl"
+      "description": "Game key numeric, e.g., 461 for NFL",
+      "default": "461"
     },
     "team_key": {
       "type": "string",
       "title": "Your Team Key",
-      "description": "Optional team key e.g., 12345.nfl.t.5 to focus on your team",
+      "description": "Optional team key e.g., 461.l.12345.t.5 to focus on your team",
       "default": ""
     },
     "display_mode": {
@@ -103,5 +103,6 @@
       "maxItems": 3,
       "default": [255, 255, 255]
     }
-  }
+  },
+  "required": []
 }

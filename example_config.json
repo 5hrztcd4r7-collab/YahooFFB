@@ -5,7 +5,7 @@
     "yahoo_client_secret": "YOUR_CLIENT_SECRET",
     "yahoo_refresh_token": "YOUR_REFRESH_TOKEN",
     "league_id": "12345",
-    "game_key": "nfl",
+    "game_key": "461",
     "team_key": "",
     "display_mode": "standings",
     "layout": "auto",
