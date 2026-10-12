@@ -99,66 +99,63 @@ class YahooFantasyFootballPlugin(BasePlugin):
             self.last_update = time.time()
             return
 
-        league_key = f"{self.league_id}.{self.game_key}"
-        if not league_key or not self.league_id:
-            self.logger.warning("League ID not configured")
+        if not self.league_id:
+            self.logger.error("league_id required")
             return
 
-        try:
-            if self.display_mode == 'standings':
-                data = self._api_get(f'/league/{league_key}/standings')
-                if data:
-                    self.last_data = self._parse_standings(data)
-            elif self.display_mode == 'scoreboard':
-                data = self._api_get(f'/league/{league_key}/scoreboard')
-                if data:
-                    self.last_data = self._parse_scoreboard(data)
-            elif self.display_mode == 'myteam':
-                if self.team_key:
-                    data = self._api_get(f'/team/{self.team_key}/standings')
-                    if data:
-                        self.last_data = self._parse_myteam(data)
-                else:
-                    self.logger.warning("team_key required for myteam mode")
-            else:
-                self.logger.warning(f"Unknown display_mode {self.display_mode}")
-        except Exception as e:
-            self.logger.error(f"Update error: {e}")
+        path = f"/league/{self.game_key}.l.{self.league_id}/settings"
+        data = self._api_get(path)
+        if not data:
+            self.logger.error("Failed to fetch league data")
+            return
+
+        if self.display_mode == 'standings':
+            parsed = self._parse_standings(data)
+        elif self.display_mode == 'scoreboard':
+            parsed = self._parse_scoreboard(data)
+        elif self.display_mode == 'myteam':
+            parsed = self._parse_myteam(data)
+        else:
+            parsed = {'type': 'standings', 'lines': ['Unknown mode']}
+
+        self.last_data = parsed
+        self.last_update = time.time()
 
     def _generate_mock_data(self):
-        """Generate mock data for dry-run testing."""
-        mode = self.display_mode
-        if mode == 'standings':
-            teams = [
-                'Eagles', 'Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills',
-                'Chargers', 'Dolphins', 'Steelers', 'Broncos'
-            ]
-            lines = []
-            for i, name in enumerate(teams, start=1):
-                wins = max(0, 10 - i)
-                losses = i - 1
-                lines.append(f"{i}. {name[:10]} {wins}-{losses}")
-            return {'type': 'standings', 'lines': lines, 'league_name': 'Mock League'}
-        elif mode == 'scoreboard':
+        if self.display_mode == 'standings':
             lines = [
-                'Eagles 112.4 @ Patriots 98.2',
-                'Cowboys 105.1 @ Packers 110.3',
-                'Chiefs 124.0 @ 49ers 119.8',
-                'Ravens 87.5 @ Bills 92.1',
-                'Chargers 101.2 @ Dolphins 95.6',
-                'Steelers 88.9 @ Broncos 103.4'
+                "1. Team Alpha 8-0",
+                "2. Team Beta 7-1",
+                "3. Team Gamma 6-2",
+                "4. Team Delta 5-3",
+                "5. Team Epsilon 4-4",
+                "6. Team Zeta 3-5",
+                "7. Team Eta 2-6",
+                "8. Team Theta 1-7",
+                "9. Team Iota 0-8",
+                "10. Team Kappa 0-8"
             ]
-            return {'type': 'scoreboard', 'lines': lines, 'week': 'Mock Week 12'}
-        elif mode == 'myteam':
-            lines = ['My Team', 'Rank 3 8-4', 'PF 1150.2', 'PA 1084.7']
-            return {'type': 'myteam', 'lines': lines}
+        elif self.display_mode == 'scoreboard':
+            lines = [
+                "Alpha 120 @ Beta 98",
+                "Gamma 105 @ Delta 110",
+                "Epsilon 88 @ Zeta 92",
+                "Eta 75 @ Theta 80"
+            ]
         else:
-            return {'type': 'unknown', 'lines': ['Dry run mode']}
+            lines = [
+                "My Team: Alpha",
+                "Record: 8-0",
+                "Points For: 1120",
+                "Points Against: 890",
+                "Next Matchup: vs Beta"
+            ]
+        return {'type': self.display_mode, 'lines': lines, 'league_name': 'Mock League'}
 
     def _parse_standings(self, data):
         try:
             league = data.get('fantasy_content', {}).get('league', {})
-            teams = league.get('standings', {}).get('teams', {}).get('team', [])
+            teams = league.get('teams', {}).get('team', [])
             if not isinstance(teams, list):
                 teams = [teams]
             standings = []
@@ -200,26 +197,35 @@ class YahooFantasyFootballPlugin(BasePlugin):
 
     def _parse_myteam(self, data):
         try:
-            team = data.get('fantasy_content', {}).get('team', {})
-            name = team.get('name', 'Unknown')
-            standings = team.get('standings', {})
-            rank = standings.get('rank', '?')
-            w = standings.get('outcome_totals', {}).get('wins', 0)
-            l = standings.get('outcome_totals', {}).get('losses', 0)
-            return {'type': 'myteam', 'lines': [f"{name}", f"Rank {rank} {w}-{l}"]}
+            league = data.get('fantasy_content', {}).get('league', {})
+            teams = league.get('teams', {}).get('team', [])
+            if not isinstance(teams, list):
+                teams = [teams]
+            lines = []
+            for t in teams:
+                team = t.get('team', {})
+                if self.team_key and team.get('team_key') != self.team_key:
+                    continue
+                name = team.get('name', 'Unknown')
+                rank = team.get('team_standings', {}).get('rank', '?')
+                w = team.get('team_standings', {}).get('outcome_totals', {}).get('wins', 0)
+                l = team.get('team_standings', {}).get('outcome_totals', {}).get('losses', 0)
+                pf = team.get('team_points', {}).get('total', {}).get('total', '0')
+                lines.append(f"{name}: {w}-{l} PF {pf}")
+                break
+            return {'type': 'myteam', 'lines': lines}
         except Exception as e:
             self.logger.error(f"Parse myteam error: {e}")
             return {'type': 'myteam', 'lines': ['Error parsing']}
 
     def display(self, force_clear=False):
-        if force_clear:
-            self.display_manager.clear()
+        # Always clear to avoid white fill artifacts
+        self.display_manager.clear()
         width = self.display_manager.width
         height = self.display_manager.height
 
         if not self.last_data:
             if self.dry_run:
-                # Generate mock data immediately for testing
                 self.last_data = self._generate_mock_data()
             else:
                 self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
@@ -251,20 +257,17 @@ class YahooFantasyFootballPlugin(BasePlugin):
                 self._scroll_offset = (self._scroll_offset + 1) % len(lines)
                 self._last_display_time = now
             start = self._scroll_offset
-            visible_lines = []
-            for i in range(max_visible):
-                idx = (start + i) % len(lines)
-                visible_lines.append(lines[idx])
+            visible_lines = [lines[(start + i) % len(lines)] for i in range(max_visible)]
         else:
             self._scroll_offset = 0
             visible_lines = lines[:max_visible]
 
-        # Simple header if space allows
-        y_start = height // 6
-        line_height = max(6, height // max(max_visible + 1, 2))
+        # Better spacing
+        top_margin = height // 8
+        line_height = max(8, (height - 2*top_margin) // max_visible)
+        y_start = top_margin + line_height // 2
         for i, line in enumerate(visible_lines):
             y = y_start + i * line_height
-            # Truncate line to fit width roughly
             display_line = line[:32]
             self.display_manager.draw_text(display_line, x=width//2, y=y, color=self.color, centered=True)
 
@@ -274,7 +277,6 @@ class YahooFantasyFootballPlugin(BasePlugin):
         if not super().validate_config():
             return False
         if self.dry_run:
-            # Dry run does not require real credentials
             return True
         missing = []
         for k in ['yahoo_client_id', 'yahoo_client_secret', 'yahoo_refresh_token', 'league_id']:
@@ -292,9 +294,7 @@ class YahooFantasyFootballPlugin(BasePlugin):
         info['last_update'] = self.last_update
         return info
 
-    # Vegas mode integration
     def get_vegas_participation(self):
-        # Participate in scroll when scrolling is enabled, otherwise pause
         return 'scroll' if self.enable_scroll else 'pause'
 
     def get_vegas_content(self):
