@@ -27,21 +27,21 @@ class YahooFantasyFootballPlugin(BasePlugin):
         self.logger.info("Yahoo Fantasy Football plugin initialized")
 
     def _load_config(self, config):
-        self.client_id = config.get('yahoo_client_id', '')
-        self.client_secret = config.get('yahoo_client_secret', '')
-        self.refresh_token = config.get('yahoo_refresh_token', '')
-        self.league_id = config.get('league_id', '')
-        self.game_key = config.get('game_key', '461')
-        self.team_key = config.get('team_key', '')
-        self.display_mode = config.get('display_mode', 'standings')
-        self.update_interval = config.get('update_interval', 300)
-        self.display_duration = config.get('display_duration', 30)
-        self.color = tuple(config.get('color', [255, 255, 255]))
-        self.layout = config.get('layout', 'auto')
-        self.enable_scroll = config.get('enable_scroll', False)
-        self.scroll_speed = config.get('scroll_speed', 2)
-        self.max_lines = config.get('max_lines', 0)
-        self.dry_run = config.get('dry_run', True)
+        self.cfg_client_id = config.get('yahoo_client_id', '')
+        self.cfg_client_secret = config.get('yahoo_client_secret', '')
+        self.cfg_refresh_token = config.get('yahoo_refresh_token', '')
+        self.cfg_league_id = config.get('league_id', '')
+        self.cfg_game_key = config.get('game_key', '461')
+        self.cfg_team_key = config.get('team_key', '')
+        self.cfg_display_mode = config.get('display_mode', 'standings')
+        self.cfg_update_interval = config.get('update_interval', 300)
+        self.cfg_display_duration = config.get('display_duration', 30)
+        self.cfg_color = tuple(config.get('color', [255, 255, 255]))
+        self.cfg_layout = config.get('layout', 'auto')
+        self.cfg_enable_scroll = config.get('enable_scroll', False)
+        self.cfg_scroll_speed = config.get('scroll_speed', 2)
+        self.cfg_max_lines = config.get('max_lines', 0)
+        self.cfg_dry_run = config.get('dry_run', True)
 
     def on_config_change(self, new_config):
         super().on_config_change(new_config)
@@ -53,15 +53,15 @@ class YahooFantasyFootballPlugin(BasePlugin):
         if self._token_cache and now < self._token_expires - 60:
             return self._token_cache
 
-        if not self.client_id or not self.client_secret or not self.refresh_token:
+        if not self.cfg_client_id or not self.cfg_client_secret or not self.cfg_refresh_token:
             self.logger.error("Yahoo credentials not configured")
             return None
 
         data = {
             'grant_type': 'refresh_token',
-            'client_id': self.client_id,
-            'client_secret': self.client_secret,
-            'refresh_token': self.refresh_token
+            'client_id': self.cfg_client_id,
+            'client_secret': self.cfg_client_secret,
+            'refresh_token': self.cfg_refresh_token
         }
         try:
             resp = requests.post('https://api.login.yahoo.com/oauth2/get_token', data=data, timeout=10)
@@ -87,7 +87,6 @@ class YahooFantasyFootballPlugin(BasePlugin):
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             resp.raise_for_status()
-            # Yahoo returns XML
             content = resp.text
             return ET.fromstring(content)
         except Exception as e:
@@ -96,43 +95,43 @@ class YahooFantasyFootballPlugin(BasePlugin):
 
     def update(self):
         now = time.time()
-        if now - self.last_update < self.update_interval:
+        if now - self.last_update < self.cfg_update_interval:
             return
         self.last_update = now
 
-        if self.dry_run:
+        if self.cfg_dry_run:
             self.logger.info("Dry run mode enabled – using mock data")
             self.last_data = self._generate_mock_data()
             return
 
-        if not self.league_id:
+        if not self.cfg_league_id:
             self.logger.warning("League ID not configured")
             return
 
-        league_key = f"{self.game_key}.l.{self.league_id}"
+        league_key = f"{self.cfg_game_key}.l.{self.cfg_league_id}"
         try:
-            if self.display_mode == 'standings':
+            if self.cfg_display_mode == 'standings':
                 data = self._api_get(f'/league/{league_key}/standings')
                 if data is not None:
                     self.last_data = self._parse_standings_xml(data)
-            elif self.display_mode == 'scoreboard':
+            elif self.cfg_display_mode == 'scoreboard':
                 data = self._api_get(f'/league/{league_key}/scoreboard')
                 if data is not None:
                     self.last_data = self._parse_scoreboard_xml(data)
-            elif self.display_mode == 'myteam':
-                if self.team_key:
-                    data = self._api_get(f'/team/{self.team_key}')
+            elif self.cfg_display_mode == 'myteam':
+                if self.cfg_team_key:
+                    data = self._api_get(f'/team/{self.cfg_team_key}')
                     if data is not None:
                         self.last_data = self._parse_myteam_xml(data)
                 else:
                     self.logger.warning("team_key required for myteam mode")
             else:
-                self.logger.warning(f"Unknown display_mode {self.display_mode}")
+                self.logger.warning(f"Unknown display_mode {self.cfg_display_mode}")
         except Exception as e:
             self.logger.error(f"Update error: {e}")
 
     def _generate_mock_data(self):
-        mode = self.display_mode
+        mode = self.cfg_display_mode
         if mode == 'standings':
             teams = [
                 'Eagles', 'Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills',
@@ -222,18 +221,13 @@ class YahooFantasyFootballPlugin(BasePlugin):
     def display(self, force_clear=False):
         width = self.display_manager.width
         height = self.display_manager.height
-
-        # Clear each frame to avoid white fill on scroll
         self.display_manager.clear()
-
         if not self.last_data:
-            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.color, centered=True)
+            self.display_manager.draw_text("Yahoo Fantasy", x=width//2, y=height//2, color=self.cfg_color, centered=True)
             self.display_manager.update_display()
             return
-
         lines = self.last_data.get('lines', [])
-        # Determine layout
-        if self.layout == 'auto':
+        if self.cfg_layout == 'auto':
             if width >= 128 and height >= 64:
                 layout_key = 'large'
             elif width >= 64:
@@ -241,16 +235,13 @@ class YahooFantasyFootballPlugin(BasePlugin):
             else:
                 layout_key = 'compact'
         else:
-            layout_key = self.layout
-
-        if self.max_lines > 0:
-            max_visible = self.max_lines
+            layout_key = self.cfg_layout
+        if self.cfg_max_lines > 0:
+            max_visible = self.cfg_max_lines
         else:
             defaults = {'compact': 3, 'wide': 5, 'large': 8}
             max_visible = defaults.get(layout_key, 4)
-
-        # Scroll handling
-        if self.enable_scroll and len(lines) > max_visible:
+        if self.cfg_enable_scroll and len(lines) > max_visible:
             now = time.time()
             if now - self._last_display_time > 0.5:
                 self._scroll_offset = (self._scroll_offset + 1) % len(lines)
@@ -260,22 +251,19 @@ class YahooFantasyFootballPlugin(BasePlugin):
         else:
             self._scroll_offset = 0
             visible_lines = lines[:max_visible]
-
-        # Improved vertical centering to reduce top gap
         top_margin = height // 8
         line_height = max(8, height // max(max_visible + 2, 2))
         y_start = top_margin
         for i, line in enumerate(visible_lines):
             y = y_start + i * line_height
             display_line = line[:32]
-            self.display_manager.draw_text(display_line, x=width//2, y=y, color=self.color, centered=True)
-
+            self.display_manager.draw_text(display_line, x=width//2, y=y, color=self.cfg_color, centered=True)
         self.display_manager.update_display()
 
     def validate_config(self):
         if not super().validate_config():
             return False
-        if self.dry_run:
+        if self.cfg_dry_run:
             return True
         missing = []
         for k in ['yahoo_client_id', 'yahoo_client_secret', 'yahoo_refresh_token', 'league_id']:
@@ -288,13 +276,13 @@ class YahooFantasyFootballPlugin(BasePlugin):
 
     def get_info(self):
         info = super().get_info()
-        info['mode'] = self.display_mode
-        info['league_id'] = self.league_id
+        info['mode'] = self.cfg_display_mode
+        info['league_id'] = self.cfg_league_id
         info['last_update'] = self.last_update
         return info
 
     def get_vegas_participation(self):
-        return 'scroll' if self.enable_scroll else 'pause'
+        return 'scroll' if self.cfg_enable_scroll else 'pause'
 
     def get_vegas_content(self):
         if not self.last_data:
